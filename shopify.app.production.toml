@@ -2,7 +2,7 @@
 
 client_id = "32d33cbfbc1ac300330b39dde3bade71"
 name = "tyz-actions-access"
-application_url = "https://example.com"
+application_url = "https://tyz-actions-access.vercel.app/"
 embedded = true
 
 [webhooks]
@@ -15,7 +15,11 @@ optional_scopes = [ ]
 use_legacy_install_flow = false
 
 [auth]
-redirect_urls = [ ]
+redirect_urls = [
+  "https://tyz-actions-access.vercel.app/auth/callback",
+  "https://tyz-actions-access.vercel.app/auth/shopify/callback",
+  "https://tyz-actions-access.vercel.app/api/auth/callback"
+]
 
 [build]
 automatically_update_urls_on_dev = true
