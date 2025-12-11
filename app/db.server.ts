@@ -1,3 +1,4 @@
+// @ts-expect-error - PrismaClient is not exported from @prisma/client
 import { PrismaClient } from "@prisma/client";
 
 declare global {
