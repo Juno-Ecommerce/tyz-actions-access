@@ -2,7 +2,8 @@
   "name": "tyz-actions-access",
   "private": true,
   "scripts": {
-    "build": "npx prisma generate && react-router build",
+    "postinstall": "prisma generate",
+    "build": "react-router build",
     "dev": "shopify app dev",
     "config:link": "shopify app config link",
     "generate": "shopify app generate",
