@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import db from "../db.server";
 import { apiVersion } from "../shopify.server";
+import { verifyShopSession } from "../session.server";
 
 interface ThemeStatusRequest {
   themeId: string;
@@ -94,52 +94,26 @@ async function getThemeStatus({
   themeId,
   shop,
 }: ThemeStatusRequest): Promise<Response> {
-  // Normalize shop domain (remove protocol, ensure .myshopify.com)
-  const normalizedShop = shop
-    .replace(/^https?:\/\//, "")
-    .replace(/\/$/, "")
-    .toLowerCase();
-
-  // Get session from database to retrieve access token
-  const session = await db.session.findFirst({
-    where: {
-      shop: normalizedShop,
-      isOnline: false, // Use offline sessions for API access
-    },
-    orderBy: {
-      expires: "desc",
-    },
-  });
-
-  if (!session) {
+  // Verify shop session
+  const sessionResult = await verifyShopSession(shop);
+  if (!sessionResult.success) {
+    // Return error response with processing field for this specific endpoint
     return new Response(
       JSON.stringify({
-        error: "No session found for shop. Please install the app first.",
+        error: sessionResult.error.error,
         processing: null,
       }),
       {
-        status: 404,
+        status: sessionResult.error.status,
         headers: { "Content-Type": "application/json" },
       }
     );
   }
 
-  // Check if session is expired
-  if (session.expires && session.expires < new Date()) {
-    return new Response(
-      JSON.stringify({
-        error: "Session expired. Please reinstall the app.",
-        processing: null,
-      }),
-      {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
-  }
+  const { session } = sessionResult;
 
   // Construct GraphQL URL
-  const graphqlUrl = `https://${normalizedShop}/admin/api/${apiVersion}/graphql.json`;
+  const graphqlUrl = `https://${session.normalizedShop}/admin/api/${apiVersion}/graphql.json`;
 
   // Make GraphQL query
   try {
