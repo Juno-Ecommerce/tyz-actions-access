@@ -1,4 +1,4 @@
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
+import type { ActionFunctionArgs } from "react-router";
 import { apiVersion } from "../shopify.server";
 import { verifyShopSession } from "../session.server";
 
@@ -13,37 +13,7 @@ interface ThemeStatusResponse {
 }
 
 // Public endpoint to check theme processing status
-// GET: /api/theme/status?themeId=123&shop=example.myshopify.com
 // POST: /api/theme/status with JSON body { themeId: "123", shop: "example.myshopify.com" }
-export const loader = async ({ request }: LoaderFunctionArgs) => {
-  try {
-    const url = new URL(request.url);
-    const themeId = url.searchParams.get("themeId");
-    const shop = url.searchParams.get("shop");
-
-    if (!themeId || !shop) {
-      return new Response(
-        JSON.stringify({ error: "Missing required parameters: themeId and shop" }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    return await getThemeStatus({ themeId, shop });
-  } catch (err) {
-    console.error(err);
-    return new Response(
-      JSON.stringify({ error: "Failed to get theme status" }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
-  }
-};
-
 export const action = async ({ request }: ActionFunctionArgs) => {
   try {
     // Only allow POST requests
