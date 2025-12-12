@@ -20,7 +20,10 @@ export default function Index() {
             <s-text>This embedded app template serves as a connector for the Tryzens Actions Github Application.</s-text>
             <s-text>There are no further features or actions to be taken here.</s-text>
           </s-stack>
-          <s-text>You can now generate previews when creating a pull request on the relevant Github repository. Ensure that the permanent Shopify url is attached to the Github repository url field.</s-text>
+          <s-stack>
+            <s-text>You can now generate previews when creating a pull request on the relevant Github repository.</s-text>
+            <s-text>Ensure that the permanent Shopify url is attached to the Github repository url field.</s-text>
+          </s-stack>
         </s-stack>
       </s-section>
     </s-page>
