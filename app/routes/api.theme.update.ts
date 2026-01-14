@@ -2,17 +2,21 @@ import type { ActionFunctionArgs } from "react-router";
 import { apiVersion } from "../shopify.server";
 import { verifyShopSession } from "../session.server";
 
+interface ThemeFileInput {
+  filename: string; // File path relative to theme root (e.g., "templates/index.liquid")
+  content: string; // File content as string
+}
+
 interface ThemeUpdateRequest {
   shop: string;
   themeId: string; // Theme ID (numeric, will be converted to GID)
-  name: string; // New theme name
+  files: ThemeFileInput[]; // Array of files to create or update
 }
 
 interface ThemeUpdateResponse {
-  theme?: {
-    id: string;
-    name: string;
-  };
+  upsertedFiles?: Array<{
+    filename: string;
+  }>;
   userErrors?: Array<{
     field: string[];
     message: string;
@@ -20,13 +24,12 @@ interface ThemeUpdateResponse {
   error?: string;
 }
 
-interface ThemeUpdateGraphQLResponse {
+interface ThemeFilesUpsertGraphQLResponse {
   data?: {
-    themeUpdate?: {
-      theme?: {
-        id: string;
-        name: string;
-      };
+    themeFilesUpsert?: {
+      upsertedThemeFiles?: Array<{
+        filename: string;
+      }>;
       userErrors: Array<{
         field: string[];
         message: string;
@@ -38,8 +41,15 @@ interface ThemeUpdateGraphQLResponse {
   }>;
 }
 
-// Public endpoint to update a theme
-// POST: /api/theme/update with JSON body { shop: "example.myshopify.com", themeId: "123", name: "New Theme Name" }
+// Public endpoint to update theme files using themeFilesUpsert
+// POST: /api/theme/update with JSON body:
+// {
+//   "shop": "example.myshopify.com",
+//   "themeId": "123",
+//   "files": [
+//     { "filename": "templates/index.liquid", "content": "<div>...</div>" }
+//   ]
+// }
 export const action = async ({ request }: ActionFunctionArgs) => {
   try {
     // Only allow POST requests
@@ -61,12 +71,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       });
     }
 
-    const { shop, themeId, name } = body;
+    const { shop, themeId, files } = body;
 
-    if (!shop || !themeId || !name) {
+    if (!shop || !themeId || !files) {
       return new Response(
         JSON.stringify({
-          error: "Missing required fields: shop, themeId, and name",
+          error: "Missing required fields: shop, themeId, and files",
         }),
         {
           status: 400,
@@ -75,11 +85,38 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       );
     }
 
-    return await updateTheme({ shop, themeId, name });
+    if (!Array.isArray(files) || files.length === 0) {
+      return new Response(
+        JSON.stringify({
+          error: "files must be a non-empty array",
+        }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    // Validate each file has required fields
+    for (const file of files) {
+      if (!file.filename || file.content === undefined) {
+        return new Response(
+          JSON.stringify({
+            error: "Each file must have 'filename' and 'content' fields",
+          }),
+          {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
+      }
+    }
+
+    return await updateThemeFiles({ shop, themeId, files });
   } catch (err) {
     console.error(err);
     return new Response(
-      JSON.stringify({ error: "Failed to update theme" }),
+      JSON.stringify({ error: "Failed to update theme files" }),
       {
         status: 500,
         headers: { "Content-Type": "application/json" },
@@ -88,10 +125,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 };
 
-async function updateTheme({
+async function updateThemeFiles({
   shop,
   themeId,
-  name,
+  files,
 }: ThemeUpdateRequest): Promise<Response> {
   // Verify shop session
   const sessionResult = await verifyShopSession(shop);
@@ -112,7 +149,16 @@ async function updateTheme({
   // Construct GraphQL URL
   const graphqlUrl = `https://${session.normalizedShop}/admin/api/${apiVersion}/graphql.json`;
 
-  // Make GraphQL mutation
+  // Transform files to GraphQL input format
+  const filesInput = files.map((file) => ({
+    filename: file.filename,
+    body: {
+      type: "TEXT" as const,
+      value: file.content,
+    },
+  }));
+
+  // Make GraphQL mutation using themeFilesUpsert
   try {
     const response = await fetch(graphqlUrl, {
       method: "POST",
@@ -122,11 +168,10 @@ async function updateTheme({
       },
       body: JSON.stringify({
         query: `
-          mutation themeUpdate($id: ID!, $input: OnlineStoreThemeInput!) {
-            themeUpdate(id: $id, input: $input) {
-              theme {
-                id
-                name
+          mutation themeFilesUpsert($files: [OnlineStoreThemeFilesUpsertFileInput!]!, $themeId: ID!) {
+            themeFilesUpsert(files: $files, themeId: $themeId) {
+              upsertedThemeFiles {
+                filename
               }
               userErrors {
                 field
@@ -136,15 +181,13 @@ async function updateTheme({
           }
         `,
         variables: {
-          id: `gid://shopify/OnlineStoreTheme/${themeId}`,
-          input: {
-            name,
-          },
+          themeId: `gid://shopify/OnlineStoreTheme/${themeId}`,
+          files: filesInput,
         },
       }),
     });
 
-    const data = (await response.json()) as ThemeUpdateGraphQLResponse;
+    const data = (await response.json()) as ThemeFilesUpsertGraphQLResponse;
 
     if (!response.ok) {
       return new Response(
@@ -158,11 +201,11 @@ async function updateTheme({
       );
     }
 
-    const themeUpdate = data.data?.themeUpdate;
-    if (!themeUpdate) {
+    const themeFilesUpsert = data.data?.themeFilesUpsert;
+    if (!themeFilesUpsert) {
       return new Response(
         JSON.stringify({
-          error: "themeUpdate missing in response",
+          error: "themeFilesUpsert missing in response",
         }),
         {
           status: 500,
@@ -172,13 +215,13 @@ async function updateTheme({
     }
 
     // Check for user errors
-    if (themeUpdate.userErrors.length > 0) {
+    if (themeFilesUpsert.userErrors.length > 0) {
       return new Response(
         JSON.stringify({
-          error: `Failed to update theme: ${JSON.stringify(
-            themeUpdate.userErrors
+          error: `Failed to update theme files: ${JSON.stringify(
+            themeFilesUpsert.userErrors
           )}`,
-          userErrors: themeUpdate.userErrors,
+          userErrors: themeFilesUpsert.userErrors,
         }),
         {
           status: 400,
@@ -188,12 +231,9 @@ async function updateTheme({
     }
 
     const result: ThemeUpdateResponse = {
-      theme: themeUpdate.theme
-        ? {
-            id: themeUpdate.theme.id,
-            name: themeUpdate.theme.name,
-          }
-        : undefined,
+      upsertedFiles: themeFilesUpsert.upsertedThemeFiles?.map((file) => ({
+        filename: file.filename,
+      })),
     };
 
     return new Response(JSON.stringify(result), {
