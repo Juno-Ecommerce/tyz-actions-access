@@ -3,8 +3,9 @@ import { apiVersion } from "../shopify.server";
 import { verifyShopSession } from "../session.server";
 
 interface ThemeFileInput {
-  filename: string; // File path relative to theme root (e.g., "templates/index.liquid")
-  content: string; // File content as string
+  filename: string;
+  content: string;
+  encoding?: "base64";
 }
 
 interface ThemeUpdateRequest {
@@ -153,7 +154,7 @@ async function updateThemeFiles({
   const filesInput = files.map((file) => ({
     filename: file.filename,
     body: {
-      type: "TEXT" as const,
+      type: file.encoding === "base64" ? "BASE64" as const : "TEXT" as const,
       value: file.content,
     },
   }));
